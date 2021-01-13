@@ -60,8 +60,10 @@ class EcrRepo():
             self.get_expired_images(versions_to_keep, days_to_keep)
 
         if len(self._expired_images) < 1:
+            print(f'No image fit remove rule from {self._name} repo.', flush=True)
             return
         
+        print(f'Removing {len(self._expired_images)} image(s) from {self._name} repo.', flush=True)
         expired_image_ids = [{'imageDigest': i['imageDigest']} for i in self._expired_images]
         while len(expired_image_ids) > 1:
             # batch_delete_image have limit for 100 images
@@ -73,27 +75,28 @@ class EcrRepo():
                 self._ecr_client.batch_delete_image(repositoryName=self._name, imageIds=expired_image_ids)
                 # Or just use break is better??
                 expired_image_ids = list()
-            
+    
+    @classmethod
+    def get_repos(cls, ecr_client):
+        repos = list()
+        next_token = ''
+        while True:
+            if next_token:
+                result = ecr_client.describe_repositories(maxResults=10, nextToken=next_token)
+            else:
+                result = ecr_client.describe_repositories(maxResults=10)
         
-def get_repos():
-    repos = list()
-    next_token = ''
-    while True:
-        if next_token:
-            result = ecr_client.describe_repositories(maxResults=10, nextToken=next_token)
-        else:
-            result = ecr_client.describe_repositories(maxResults=10)
-            
-        for repo in result['repositories']:
-            if repo['repositoryName'] in skip_repo:
-                continue
-            repos.append(EcrRepo(repo['repositoryName'], ecr_client))
-            
-        if 'nextToken' not in result:
-            break
-        else:
-            next_token = result['nextToken']
-    return repos
+            for repo in result['repositories']:
+                if repo['repositoryName'] in skip_repo:
+                    continue
+                repos.append(EcrRepo(repo['repositoryName'], ecr_client))
+        
+            if 'nextToken' not in result:
+                break
+            else:
+                next_token = result['nextToken']
+        return repos
+
 
 def setup_argparse():
     parser = argparse.ArgumentParser(
@@ -115,7 +118,7 @@ if __name__ == '__main__':
     
     ecr_client = boto3.client('ecr')
     
-    repos = get_repos()
+    repos = EcrRepo.get_repos(ecr_client)
     
     for r in repos:
         r.delete_expired_images(new_version_to_keep, day_to_keep)
