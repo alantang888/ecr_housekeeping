@@ -1,12 +1,10 @@
-import boto3
+import argparse
 import datetime
+
+import boto3
 import pytz
 
 BATCH_IMAGE_DELETE_ITEM = 100
-NEW_VERSION_TO_KEEP = 30
-DAY_TO_KEEP = 90
-SKIP_REPO = []
-# SKIP_REPO=['test-b', 'test-e']
 
 
 class EcrRepo():
@@ -87,7 +85,7 @@ def get_repos():
             result = ecr_client.describe_repositories(maxResults=10)
             
         for repo in result['repositories']:
-            if repo['repositoryName'] in SKIP_REPO:
+            if repo['repositoryName'] in skip_repo:
                 continue
             repos.append(EcrRepo(repo['repositoryName'], ecr_client))
             
@@ -97,11 +95,27 @@ def get_repos():
             next_token = result['nextToken']
     return repos
 
+def setup_argparse():
+    parser = argparse.ArgumentParser(
+        description='Remove ECR image(s), just keep number latest push and/or images pushed in last x days.')
+    parser.add_argument('--keep-latest', type=int, default=30, help='Number of latest push image to keep')
+    parser.add_argument('--keep-day', type=int, default=90, help='Number of days to keep')
+    parser.add_argument('-s', '--skip-repo', action='append', help='Repo want to skip.')
+    return parser.parse_args()
+
     
 if __name__ == '__main__':
+    args = setup_argparse()
+
+    new_version_to_keep = args.keep_latest
+    day_to_keep = args.keep_day
+    skip_repo = args.skip_repo
+    if skip_repo is None:
+        skip_repo = list()
+    
     ecr_client = boto3.client('ecr')
     
     repos = get_repos()
     
     for r in repos:
-        r.delete_expired_images(NEW_VERSION_TO_KEEP, DAY_TO_KEEP)
+        r.delete_expired_images(new_version_to_keep, day_to_keep)
